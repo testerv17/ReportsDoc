@@ -99,15 +99,30 @@
         const img = div.querySelector('img');
         const desc = div.querySelector('p')?.innerText || '';
 
-        const res = await fetch(img.src);
-        const blob = await res.blob();
-        const base64 = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.readAsDataURL(blob);
-        });
+        try {
+          const blob = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', img.src, true);
+            xhr.responseType = 'blob';
+            xhr.onload = () => {
+              if (xhr.status === 200) resolve(xhr.response);
+              else reject(new Error('HTTP ' + xhr.status));
+            };
+            xhr.onerror = () => reject(new Error('Network error'));
+            xhr.send();
+          });
 
-        return `<div><img src="${base64}" style="width:100%;max-width:500px;"/><p>${desc}</p></div>`;
+          const base64 = await new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+
+          return `<div><img src="${base64}" style="width:100%;max-width:500px;"/><p>${desc}</p></div>`;
+        } catch (e) {
+          console.error('⚠️ Error cargando imagen:', img.src, e);
+          return `<div><p style="color:red;">⚠️ Imagen no disponible</p><p>${desc}</p></div>`;
+        }
       })
     );
 
@@ -128,3 +143,4 @@
 </script>
 </body>
 </html>
+
