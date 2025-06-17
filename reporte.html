@@ -6,11 +6,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
-    body { background: #f4f6f8; font-family: 'Segoe UI', sans-serif; padding: 20px; }
-    .editable { background: #fff; border: 1px dashed #ccc; padding: 10px; border-radius: 6px; min-height: 60px; }
-    .editable:focus { outline: none; border-color: #007bff; box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25); }
-    .photo-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .photo-card img { width: 100%; border-radius: 6px; }
+    body {
+      background: #f4f6f8;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+    }
+    .editable {
+      background: #fff;
+      border: 1px dashed #ccc;
+      padding: 10px;
+      border-radius: 6px;
+      min-height: 60px;
+    }
+    .editable:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+    .photo-card {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .photo-card img {
+      width: 100%;
+      border-radius: 6px;
+      max-width: 600px;
+    }
   </style>
 </head>
 <body>
@@ -36,23 +61,21 @@
   <button id="btnExportar" class="btn btn-primary mt-4">Exportar a Word</button>
 </div>
 
-<!-- Firebase SDKs -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="firebaseConfig.js"></script>
 
-<!-- DOCX + Lógica como módulo -->
-<script type="module">
-  import * as docx from 'https://cdn.jsdelivr.net/npm/docx@8.0.3/build/docx.esm.min.js';
+<!-- HTML-DOCX-JS -->
+<script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
 
+<script>
   const id = new URLSearchParams(window.location.search).get('id');
   const fotosContainer = document.getElementById('fotosContainer');
   let reporte = null;
 
   firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-
-  db.ref('reportes/' + id).once('value').then(snapshot => {
+  firebase.database().ref('reportes/' + id).once('value').then(snapshot => {
     reporte = snapshot.val();
     document.getElementById('resumen').innerText = `Reporte del equipo ${reporte.equipo} el día ${reporte.fecha}`;
     document.getElementById('caracteristicas').innerText = reporte.caracteristicas;
@@ -66,36 +89,42 @@
     });
   });
 
-  async function exportarWord() {
-    const { Document, Packer, Paragraph, HeadingLevel, Media } = docx;
+  document.getElementById('btnExportar').addEventListener('click', async () => {
+    const resumen = document.getElementById('resumen').innerHTML;
+    const caracteristicas = document.getElementById('caracteristicas').innerHTML;
+    const timeline = document.getElementById('timeline').innerHTML;
 
-    const doc = new Document();
-    const children = [];
+    const fotosHTML = await Promise.all(
+      Array.from(document.querySelectorAll('#fotosContainer .photo-card')).map(async div => {
+        const img = div.querySelector('img');
+        const desc = div.querySelector('p')?.innerText || '';
 
-    children.push(new Paragraph({ text: 'Reporte Técnico del Equipo', heading: HeadingLevel.HEADING_1 }));
-    children.push(new Paragraph(document.getElementById('resumen').innerText));
-    children.push(new Paragraph({ text: 'Características Generales', heading: HeadingLevel.HEADING_2 }));
-    children.push(new Paragraph(document.getElementById('caracteristicas').innerText));
-    children.push(new Paragraph({ text: 'Línea de Tiempo', heading: HeadingLevel.HEADING_2 }));
-    children.push(new Paragraph(document.getElementById('timeline').innerText));
+        const res = await fetch(img.src);
+        const blob = await res.blob();
+        const base64 = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
 
-    for (const foto of reporte.imagenes) {
-      children.push(new Paragraph({ text: foto.descripcion }));
-      const res = await fetch(foto.url);
-      const buffer = await res.arrayBuffer();
-      const image = Media.addImage(doc, buffer, 500, 300);
-      children.push(image);
-    }
+        return `<div><img src="${base64}" style="width:100%;max-width:500px;"/><p>${desc}</p></div>`;
+      })
+    );
 
-    doc.addSection({ children });
-    const blob = await Packer.toBlob(doc);
+    const htmlContent = `
+      <h1>Reporte Técnico del Equipo</h1>
+      <h2>Resumen Ejecutivo</h2><p>${resumen}</p>
+      <h2>Características Generales</h2><p>${caracteristicas}</p>
+      <h2>Línea de Tiempo</h2><p>${timeline}</p>
+      <h2>Fotos del Equipo</h2>${fotosHTML.join('')}
+    `;
+
+    const blob = window.htmlDocx.asBlob(htmlContent);
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'reporte_equipo.docx';
     link.click();
-  }
-
-  document.getElementById('btnExportar').addEventListener('click', exportarWord);
+  });
 </script>
 </body>
 </html>
